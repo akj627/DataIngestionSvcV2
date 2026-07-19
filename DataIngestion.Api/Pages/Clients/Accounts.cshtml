@@ -1,0 +1,61 @@
+@page "{clientId}"
+@model DataIngestion.Api.Pages.Clients.AccountsModel
+@{
+    ViewData["Title"] = $"Accounts — {Model.ClientId}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="/@(string.IsNullOrEmpty(Model.AsOf) ? "" : "?asOf=" + Uri.EscapeDataString(Model.AsOf))">Clients</a>
+        </li>
+        <li class="breadcrumb-item active">@Model.ClientId</li>
+    </ol>
+</nav>
+
+<h4 class="mb-3">
+    Accounts for <span class="text-muted">@Model.ClientId</span>
+    @if (!string.IsNullOrEmpty(Model.AsOf))
+    {
+        <span class="badge bg-secondary fw-normal fs-6 ms-2">as of @Model.AsOf</span>
+    }
+</h4>
+
+<table id="accountsTable" class="table table-striped table-hover table-sm">
+    <thead class="table-dark">
+        <tr>
+            <th>Account ID</th>
+            <th>Type</th>
+            <th>Custodian</th>
+            <th>Opened</th>
+            <th>Status</th>
+            <th>Cash Balance</th>
+            <th>Total Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var a in Model.Accounts)
+        {
+            <tr data-url="/Clients/Holdings/@Model.ClientId/@a.AccountId@(string.IsNullOrEmpty(Model.AsOf) ? "" : "?asOf=" + Uri.EscapeDataString(Model.AsOf))" style="cursor:pointer">
+                <td>@a.AccountId</td>
+                <td>@a.AccountType</td>
+                <td>@a.Custodian</td>
+                <td>@a.OpenedDate</td>
+                <td>@a.Status</td>
+                <td>@a.CashBalance.ToString("N2")</td>
+                <td>@a.TotalValue.ToString("N2")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            $('#accountsTable').DataTable({ pageLength: 25 });
+            $('#accountsTable tbody').on('click', 'tr', function () {
+                window.location = $(this).data('url');
+            });
+        });
+    </script>
+}

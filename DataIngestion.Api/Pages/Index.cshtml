@@ -1,0 +1,203 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Data Ingestion";
+    var activeTab = (!string.IsNullOrEmpty(Model.AsOf) || Model.Tab == "clients") ? "clients" : "ingestion";
+    if (Model.LastIngestionResult != null || Model.ShowInputError || Model.IngestionError != null) activeTab = "ingestion";
+}
+
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "ingestion" ? "active" : "")" href="/">
+            Ingestion
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "clients" ? "active" : "")"
+           href="/?tab=clients@(!string.IsNullOrEmpty(Model.AsOf) ? "&asOf=" + Uri.EscapeDataString(Model.AsOf) : "")">
+            Clients
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+    @* ── Ingestion tab ──────────────────────────────────────────────────────── *@
+    <div class="tab-pane @(activeTab == "ingestion" ? "show active" : "")">
+
+        <h5 class="mb-3">Run Ingestion</h5>
+        <form method="post" enctype="multipart/form-data">
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-md-8">
+                    <label asp-for="ZipUrl" class="form-label">ZIP URL</label>
+                    <input id="urlInput" asp-for="ZipUrl" class="form-control" placeholder="https://..." />
+                </div>
+            </div>
+            <div class="text-muted small my-2 ms-1">— or browse for a local file —</div>
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-8">
+                    <label class="form-label">Local ZIP file</label>
+                    <input id="fileInput" type="file" name="ZipFile" accept=".zip" class="form-control" />
+                </div>
+            </div>
+            @if (Model.ShowInputError)
+            {
+                <div class="text-danger small mb-2">Provide a URL or select a local file.</div>
+            }
+            <button type="submit" class="btn btn-primary">Run Ingestion</button>
+        </form>
+
+        @if (Model.IngestionError != null)
+        {
+            <div class="alert alert-warning mt-3 mb-0">
+                <strong>Duplicate:</strong> @Model.IngestionError
+            </div>
+        }
+
+        @if (Model.LastIngestionResult != null)
+        {
+            var r = Model.LastIngestionResult;
+            <div class="alert alert-success mt-3 mb-0">
+                <strong>Run #@r.RunId complete</strong> &nbsp;·&nbsp;
+                @r.ClientsProcessed clients &nbsp;·&nbsp;
+                @r.AccountsProcessed accounts &nbsp;·&nbsp;
+                @r.HoldingsProcessed holdings &nbsp;·&nbsp;
+                <span class="text-muted">@r.KnowledgeDate.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</span>
+            </div>
+        }
+
+        <hr class="my-4" />
+
+        <h5 class="mb-3">Ingestion History</h5>
+        @if (Model.Runs.Count == 0)
+        {
+            <p class="text-muted">No ingestion runs yet.</p>
+        }
+        else
+        {
+            <table id="runsTable" class="table table-striped table-hover table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Run #</th>
+                        <th>Knowledge Date</th>
+                        <th>ZIP Source</th>
+                        <th>Clients</th>
+                        <th>Accounts</th>
+                        <th>Holdings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.Runs)
+                    {
+                        <tr>
+                            <td>@run.RunId</td>
+                            <td>@run.KnowledgeDate.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td class="text-truncate" style="max-width:300px" title="@run.ZipSource">@run.ZipSource</td>
+                            <td>@run.ClientsProcessed</td>
+                            <td>@run.AccountsProcessed</td>
+                            <td>@run.HoldingsProcessed</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @* ── Clients tab ────────────────────────────────────────────────────────── *@
+    <div class="tab-pane @(activeTab == "clients" ? "show active" : "")">
+
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <h5 class="mb-0">Clients</h5>
+            <div class="d-flex align-items-center gap-2 ms-2">
+                <label class="form-label mb-0 text-muted small">Dashboard as of:</label>
+                <input type="datetime-local" id="asOfPicker" class="form-control form-control-sm" style="width:200px"
+                       value="@Model.AsOf" />
+                @if (!string.IsNullOrEmpty(Model.AsOf))
+                {
+                    <a href="/?tab=clients" class="btn btn-outline-secondary btn-sm">Latest</a>
+                }
+            </div>
+            @if (Model.Clients.Count > 0)
+            {
+                var runDate = Model.Clients[0].KnowledgeDate;
+                <span class="text-muted small">
+                    @if (string.IsNullOrEmpty(Model.AsOf))
+                    {
+                        <text>— latest run · @runDate.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</text>
+                    }
+                    else
+                    {
+                        <text>— run as of @runDate.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</text>
+                    }
+                </span>
+            }
+        </div>
+
+        @if (Model.Clients.Count == 0)
+        {
+            <p class="text-muted">
+                @if (!string.IsNullOrEmpty(Model.AsOf))
+                {
+                    <text>No ingestion run found on or before @Model.AsOf.</text>
+                }
+                else
+                {
+                    <text>No data yet. Run ingestion to load clients.</text>
+                }
+            </p>
+        }
+        else
+        {
+            <table id="clientsTable" class="table table-striped table-hover table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Client ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Advisor</th>
+                        <th>Last Updated</th>
+                        <th>Knowledge Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.Clients)
+                    {
+                        <tr data-url="/Clients/Accounts/@c.ClientId@(string.IsNullOrEmpty(Model.AsOf) ? "" : "?asOf=" + Uri.EscapeDataString(Model.AsOf))" style="cursor:pointer">
+                            <td>@c.ClientId</td>
+                            <td>@c.FirstName @c.LastName</td>
+                            <td>@c.Email</td>
+                            <td>@c.AdvisorId</td>
+                            <td>@c.LastUpdated.LocalDateTime.ToString("yyyy-MM-dd")</td>
+                            <td>@c.KnowledgeDate.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('urlInput').addEventListener('input', function () {
+            if (this.value) document.getElementById('fileInput').value = '';
+        });
+        document.getElementById('fileInput').addEventListener('change', function () {
+            if (this.files.length > 0) document.getElementById('urlInput').value = '';
+        });
+
+        document.getElementById('asOfPicker').addEventListener('change', function () {
+            const val = this.value;
+            window.location = val ? '/?tab=clients&asOf=' + encodeURIComponent(val) : '/?tab=clients';
+        });
+
+        $(document).ready(function () {
+            $('#runsTable').DataTable({ pageLength: 10, order: [[0, 'desc']] });
+            $('#clientsTable').DataTable({ pageLength: 10 });
+            $('#clientsTable tbody').on('click', 'tr', function () {
+                window.location = $(this).data('url');
+            });
+        });
+    </script>
+}

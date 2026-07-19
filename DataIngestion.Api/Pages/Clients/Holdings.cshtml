@@ -1,0 +1,63 @@
+@page "{clientId}/{accountId}"
+@model DataIngestion.Api.Pages.Clients.HoldingsModel
+@{
+    ViewData["Title"] = $"Holdings — {Model.AccountId}";
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="/@(string.IsNullOrEmpty(Model.AsOf) ? "" : "?asOf=" + Uri.EscapeDataString(Model.AsOf))">Clients</a>
+        </li>
+        <li class="breadcrumb-item">
+            <a href="/Clients/Accounts/@Model.ClientId@(string.IsNullOrEmpty(Model.AsOf) ? "" : "?asOf=" + Uri.EscapeDataString(Model.AsOf))">@Model.ClientId</a>
+        </li>
+        <li class="breadcrumb-item active">@Model.AccountId</li>
+    </ol>
+</nav>
+
+<h4 class="mb-3">
+    Holdings for <span class="text-muted">@Model.AccountId</span>
+    @if (!string.IsNullOrEmpty(Model.AsOf))
+    {
+        <span class="badge bg-secondary fw-normal fs-6 ms-2">as of @Model.AsOf</span>
+    }
+</h4>
+
+<table id="holdingsTable" class="table table-striped table-hover table-sm">
+    <thead class="table-dark">
+        <tr>
+            <th>Ticker</th>
+            <th>CUSIP</th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Market Value</th>
+            <th>Cost Basis</th>
+            <th>Asset Class</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var h in Model.Holdings)
+        {
+            <tr>
+                <td>@h.Ticker</td>
+                <td>@h.Cusip</td>
+                <td>@h.Description</td>
+                <td>@h.Quantity.ToString("N4")</td>
+                <td>@h.Price.ToString("N2")</td>
+                <td>@h.MarketValue.ToString("N2")</td>
+                <td>@h.CostBasis.ToString("N2")</td>
+                <td>@h.AssetClass</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            $('#holdingsTable').DataTable({ pageLength: 25 });
+        });
+    </script>
+}

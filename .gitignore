@@ -1,0 +1,26 @@
+# .NET build artifacts
+bin/
+obj/
+*.user
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
+# VS/Rider IDE folders
+.vs/
+.idea/
+*.suo
+
+# NuGet
+*.nupkg
+packages/
+
+# Environment
+.env
+appsettings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
