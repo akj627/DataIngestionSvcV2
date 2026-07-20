@@ -11,7 +11,7 @@ public class IndexModel : PageModel
     private readonly IIngestionService _ingestionService;
 
     [BindProperty]
-    public string ZipUrl { get; set; } = "http://localhost:5141/test-data-v1.zip";
+    public string ZipUrl { get; set; } = "http://localhost:5142/test-data-v1.zip";
 
     [BindProperty(SupportsGet = true)]
     public string? AsOf { get; set; }
