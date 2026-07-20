@@ -149,14 +149,28 @@ Each ZIP's SHA-256 hash is stored on `IngestionRun`. Attempting to ingest the sa
 
 ## Test data
 
-Four ZIPs in `wwwroot/` covering a progression of portfolio changes.
+Six ZIPs in `wwwroot/` for different scenarios.
 
-| Version | Clients | Accounts | Holdings |
-|---------|---------|----------|----------|
-| v1      | 3       | 5        | 11       |
-| v2      | 5       | 9        | 18       |
-| v3      | 4       | 8        | 21       |
-| v4      | 6       | 12       | 30       |
+### Progression snapshots (as-of demo)
+
+| File | Clients | Accounts | Holdings | Purpose |
+|------|---------|----------|----------|---------|
+| test-data-v1.zip | 3 | 5 | 11 | Baseline snapshot |
+| test-data-v2.zip | 5 | 9 | 18 | Clients added, holdings changed |
+| test-data-v3.zip | 4 | 8 | 21 | Clients removed and added |
+| test-data-v4.zip | 6 | 12 | 30 | Further changes |
+
+### Load test
+
+| File | Clients | Accounts | Holdings | Notes |
+|------|---------|----------|----------|-------|
+| test-data-v500.zip | 500 | 1000 | 3000 | Sync ingestion: ~7.5s · Async caller response: ~300ms |
+
+### Partial failure
+
+| File | Clients | Notes |
+|------|---------|-------|
+| test-data-with-error.zip | 10 entries (9 valid, 1 malformed) | CLT-50005 has invalid JSON — skipped with a warning, other 9 ingest cleanly |
 
 ### Client roster across versions
 
