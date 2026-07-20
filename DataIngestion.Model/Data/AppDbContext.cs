@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Holding> Holdings => Set<Holding>();
+    public DbSet<IngestionJob> IngestionJobs => Set<IngestionJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

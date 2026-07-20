@@ -15,6 +15,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddHttpClient<IIngestionService, IngestionService>();
 builder.Services.AddScoped<IClientQueryService, ClientQueryService>();
+builder.Services.AddSingleton<IIngestionQueue, IngestionChannel>();
+builder.Services.AddHostedService<IngestionBackgroundService>();
 
 var app = builder.Build();
 

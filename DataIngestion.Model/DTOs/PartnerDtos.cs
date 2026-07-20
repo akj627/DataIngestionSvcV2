@@ -139,6 +139,20 @@ public class IngestionRunSummaryDto
     public int HoldingsProcessed { get; set; }
 }
 
+public class JobStatusDto
+{
+    public Guid JobId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string ZipUrl { get; set; } = string.Empty;
+    public int? RunId { get; set; }
+    public int? ClientsProcessed { get; set; }
+    public int? AccountsProcessed { get; set; }
+    public int? HoldingsProcessed { get; set; }
+    public string? Error { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
 public class PagedResult<T>
 {
     public List<T> Items { get; set; } = new();

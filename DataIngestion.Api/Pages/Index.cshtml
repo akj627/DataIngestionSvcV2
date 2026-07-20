@@ -44,8 +44,17 @@
             {
                 <div class="text-danger small mb-2">Provide a URL or select a local file.</div>
             }
-            <button type="submit" class="btn btn-primary">Run Ingestion</button>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Ingest (sync)</button>
+                <button type="button" id="asyncIngestBtn" class="btn btn-outline-primary">Ingest (async)</button>
+            </div>
         </form>
+
+        <div id="asyncStatusCard" class="alert mt-3 mb-0 d-none">
+            <strong>Async Job</strong> <span id="asyncJobId" class="font-monospace small"></span><br/>
+            Status: <span id="asyncStatus" class="fw-bold"></span>
+            <span id="asyncResult"></span>
+        </div>
 
         @if (Model.IngestionError != null)
         {
@@ -185,6 +194,67 @@
         });
         document.getElementById('fileInput').addEventListener('change', function () {
             if (this.files.length > 0) document.getElementById('urlInput').value = '';
+        });
+
+        document.getElementById('asyncIngestBtn').addEventListener('click', async function () {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) { alert('Enter a ZIP URL to use async ingestion.'); return; }
+
+            const card = document.getElementById('asyncStatusCard');
+            const jobIdEl = document.getElementById('asyncJobId');
+            const statusEl = document.getElementById('asyncStatus');
+            const resultEl = document.getElementById('asyncResult');
+
+            card.className = 'alert alert-secondary mt-3 mb-0';
+            jobIdEl.textContent = '';
+            statusEl.textContent = 'Queuing...';
+            resultEl.textContent = '';
+            card.classList.remove('d-none');
+
+            let resp;
+            try {
+                resp = await fetch('/api/webhook/async', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+            } catch (e) {
+                statusEl.textContent = 'Network error: ' + e.message;
+                card.className = 'alert alert-danger mt-3 mb-0';
+                return;
+            }
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                statusEl.textContent = 'Error: ' + (err.error || resp.statusText);
+                card.className = 'alert alert-danger mt-3 mb-0';
+                return;
+            }
+
+            const { jobId } = await resp.json();
+            jobIdEl.textContent = jobId;
+            statusEl.textContent = 'Pending';
+
+            const poll = setInterval(async () => {
+                const r = await fetch('/api/jobs/' + jobId);
+                if (!r.ok) return;
+                const job = await r.json();
+                statusEl.textContent = job.status;
+
+                if (job.status === 'Completed') {
+                    clearInterval(poll);
+                    card.className = 'alert alert-success mt-3 mb-0';
+                    resultEl.textContent = ` · Run #${job.runId} · ${job.clientsProcessed} clients · ${job.accountsProcessed} accounts · ${job.holdingsProcessed} holdings`;
+                    $('#runsTable').DataTable().destroy();
+                    location.reload();
+                } else if (job.status === 'Failed') {
+                    clearInterval(poll);
+                    card.className = 'alert alert-danger mt-3 mb-0';
+                    resultEl.textContent = ' · ' + (job.error || 'Unknown error');
+                } else if (job.status === 'Running') {
+                    card.className = 'alert alert-info mt-3 mb-0';
+                }
+            }, 2000);
         });
 
         document.getElementById('asOfPicker').addEventListener('change', function () {
