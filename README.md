@@ -1,20 +1,20 @@
 # DataIngestion
 
-A data ingestion pipeline that receives a webhook with a ZIP URL, downloads and parses JSON client files, and persists the data to SQLite via EF Core. Includes a Razor Pages UI for triggering ingestion and browsing client/account/holding data with historical as-of queries.
+A data ingestion pipeline that receives a webhook with a ZIP URL, downloads and parses JSON client files, and persists the data to SQLite via EF Core. Supports both synchronous and asynchronous ingestion. Includes a Razor Pages UI for triggering ingestion and browsing client/account/holding data with historical as-of queries.
 
 ## Stack
 
 - **Framework:** ASP.NET Core Web API + Razor Pages (.NET 10)
-- **ORM:** Entity Framework Core with SQLite (`dataingestion.db` created on first run)
+- **ORM:** Entity Framework Core with SQLite (`dataingestionv2.db` created on first run)
 - **UI:** Razor Pages + Bootstrap 5 + DataTables
-- **Tests:** xUnit + Moq
+- **Tests:** xUnit + Moq (50 tests)
 - **API Docs:** Swagger at `/swagger`
 
 ## Project structure
 
 ```
 DataIngestion.Model/          EF Core entities, DTOs, DbContext
-DataIngestion.Svc/            Ingestion and query services
+DataIngestion.Svc/            Ingestion, query, and queue services
 DataIngestion.Api/            Web API controllers + Razor Pages UI
 DataIngestion.Tests/          xUnit test suite
 ```
@@ -22,7 +22,8 @@ DataIngestion.Tests/          xUnit test suite
 ```
 DataIngestion.Api/
 ├── Controllers/
-│   ├── WebhookController.cs      POST /api/webhook
+│   ├── WebhookController.cs      POST /api/webhook (sync), POST /api/webhook/async
+│   ├── JobsController.cs         GET /api/jobs/{jobId}
 │   └── ClientsController.cs      GET /api/clients, /accounts, /holdings
 ├── Pages/
 │   ├── Index.cshtml              Dashboard — ingestion form + run history + clients grid
@@ -34,6 +35,14 @@ DataIngestion.Api/
     ├── test-data-v2.zip
     ├── test-data-v3.zip
     └── test-data-v4.zip
+
+DataIngestion.Svc/
+├── Services/
+│   ├── IngestionService.cs           Downloads ZIP, parses JSON, inserts rows
+│   ├── IngestionBackgroundService.cs BackgroundService — single-threaded queue consumer
+│   ├── IngestionChannel.cs           Channel<T> implementation of IIngestionQueue
+│   ├── IIngestionQueue.cs            Queue abstraction
+│   └── ClientQueryService.cs         As-of query logic
 ```
 
 ## Getting started
@@ -45,9 +54,9 @@ dotnet run
 
 - UI: `http://localhost:5141`
 - Swagger: `http://localhost:5141/swagger`
-- DB: `dataingestion.db` at the repo root (created automatically on first run)
+- DB: `dataingestionv2.db` at the repo root (created automatically on first run)
 
-> If you've run the app before and the schema has changed, delete `dataingestion.db` before restarting.
+> If you've run the app before and the schema has changed, delete `dataingestionv2.db` before restarting.
 
 ## Running tests
 
@@ -55,17 +64,30 @@ dotnet run
 dotnet test
 ```
 
-## Testing ingestion via curl
+## API endpoints
 
+### Sync ingestion
 ```bash
 curl -X POST http://localhost:5141/api/webhook \
   -H "Content-Type: application/json" \
   -d '{"url": "http://localhost:5141/test-data-v1.zip"}'
+# → 200 OK { runId, clientsProcessed, accountsProcessed, holdingsProcessed, knowledgeDate }
+```
+
+### Async ingestion
+```bash
+curl -X POST http://localhost:5141/api/webhook/async \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://localhost:5141/test-data-v2.zip"}'
+# → 202 Accepted { jobId }
+
+curl http://localhost:5141/api/jobs/{jobId}
+# → 200 OK { jobId, status, runId, clientsProcessed, ... }
 ```
 
 ## How it works
 
-### Data flow
+### Sync data flow
 
 ```
 POST /api/webhook
@@ -81,9 +103,33 @@ POST /api/webhook
   → Returns IngestionResult (counts, RunId, KnowledgeDate)
 ```
 
+### Async data flow
+
+```
+POST /api/webhook/async
+  → WebhookController creates IngestionJob (Status=Pending) in DB
+  → Enqueues (jobId, url) onto Channel<T>
+  → Returns 202 Accepted { jobId }
+
+IngestionBackgroundService (single reader, sequential)
+  → Dequeues next job
+  → Updates Status → Running
+  → Calls IngestionService.IngestAsync(url)  ← same service as sync path
+  → Updates Status → Completed (or Failed) + stores counts
+
+GET /api/jobs/{jobId}
+  → Returns current JobStatusDto { status, runId, counts, error }
+```
+
+The UI's **Ingest (async)** button posts to `/api/webhook/async` and polls `GET /api/jobs/{jobId}` every 2 seconds until the job completes, then refreshes the runs grid.
+
+### Why single-threaded consumer
+
+The background service uses `Channel<T>` with `SingleReader = true` and processes jobs one at a time. SQLite does not support concurrent writes — a parallel consumer would cause lock contention. If switched to Postgres, the consumer count could be increased by bumping channel options and registering multiple hosted service instances.
+
 ### Append-only ingestion
 
-- Each `POST /api/webhook` creates a new `IngestionRun` row
+- Each ingestion (sync or async) creates a new `IngestionRun` row
 - All clients/accounts/holdings are inserted fresh — nothing is updated or deleted
 - "Current" data = rows scoped to `MAX(IngestionRun.Id)`
 - "Historical" data = rows scoped to the latest run on or before a given date
@@ -103,7 +149,7 @@ Each ZIP's SHA-256 hash is stored on `IngestionRun`. Attempting to ingest the sa
 
 ## Test data
 
-Four ZIPs in `wwwroot/` covering a progression of portfolio changes, useful for demonstrating the append-only and as-of features.
+Four ZIPs in `wwwroot/` covering a progression of portfolio changes.
 
 | Version | Clients | Accounts | Holdings |
 |---------|---------|----------|----------|
@@ -128,10 +174,10 @@ Four ZIPs in `wwwroot/` covering a progression of portfolio changes, useful for 
 
 ### Suggested walkthrough
 
-1. Ingest v1 → 3 clients, Emily Wilson visible
-2. Ingest v2 → 5 clients, Emily gone, 3 new clients, Jane expanded to 2 accounts
-3. Ingest v3 → 4 clients, David + Alex gone, Maria Garcia in, Sarah drops to 1 account
-4. Ingest v4 → 6 clients, Robert Chen + Lisa Park in, Jane adds SEP_IRA, Sarah back to 3 accounts
+1. Ingest v1 (sync) → 3 clients, Emily Wilson visible
+2. Ingest v2 (async) → 202 returned immediately, status card polls to completion
+3. Ingest v3 → 4 clients, David + Alex gone, Maria Garcia in
+4. Ingest v4 → 6 clients, Robert Chen + Lisa Park in
 5. Set the as-of date picker between any two runs → grid snaps to that snapshot
 6. Click a client → Accounts/Holdings pages preserve the as-of context
 7. Try ingesting any ZIP again → duplicate warning
@@ -141,11 +187,12 @@ Four ZIPs in `wwwroot/` covering a progression of portfolio changes, useful for 
 | Decision | Rationale |
 |----------|-----------|
 | Append-only, not upsert | Preserves full snapshot history; enables as-of queries with no extra work |
-| Awaited ingestion (not fire-and-forget) | Simple and fast enough for the expected data volume |
+| `Channel<T>` not a broker | Zero external dependencies; interface (`IIngestionQueue`) can be swapped for RabbitMQ or Azure Service Bus without changing the consumer |
+| Single-threaded consumer | SQLite doesn't support concurrent writes; bump to multiple consumers when switching to Postgres |
+| Same `IngestionService` for sync and async | No duplication — the background service calls the exact same code path |
 | `EnsureCreated()` not `Migrate()` | Simpler for local dev; swap to `Migrate()` for production |
 | SQLite | Zero external dependencies, file-based; switch to Postgres by changing the connection string and calling `UseNpgsql(...)` |
 | DTOs separate from EF models | Input shape from upstream doesn't dictate the DB schema |
-| URL-based tabs | Tab clicks are GET requests, so data is always fresh without client-side state management |
 
 ## Known limitation
 
